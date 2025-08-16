@@ -156,8 +156,8 @@ Bu proje **açık kaynak** ve **geliştirmeye açıktır**! Katkılarınızı be
 ### Geliştirme Ortamı Kurulumu
 ```bash
 # Repoyu fork edin ve clone edin
-git clone https://github.com/your-username/modern-video-downloader.git
-cd modern-video-downloader
+git clone https://github.com/KurKigal/Youtube-Video-Downloader.git
+cd Youtube-Video-Downloader
 
 # Geliştirme bağımlılıklarını kurun
 pip install -r requirements.txt
@@ -188,7 +188,7 @@ python video_downloader.py
 ### İletişim
 - **Issues**: GitHub Issues kısmını kullanın
 - **Discussions**: Genel sorular için GitHub Discussions
-- **Email**: [Buraya email adresinizi ekleyin]
+- **Email**: [keseremirhann@gmail.com]
 
 ### SSS
 **S: Hangi siteleri destekliyor?**
