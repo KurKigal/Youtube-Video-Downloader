@@ -15,7 +15,7 @@
 ## 📁 Dosya Yapısı
 
 ```
-Modern-Video-Downloader/
+Youtube-Video-Downloader/
 ├── video_downloader.py     # Ana uygulama dosyası
 ├── requirements.txt        # Python bağımlılıkları
 ├── install.bat            # Kurulum scripti
