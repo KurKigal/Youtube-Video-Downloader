@@ -1,4 +1,4 @@
-# Modern Video Downloader
+# Youtube Video Downloader
 
 🎬 Modern, kullanıcı dostu Python tabanlı video indirme uygulaması. YouTube ve diğer platformlardan video/ses dosyalarını farklı kalite seçenekleriyle indirmenizi sağlar.
 
