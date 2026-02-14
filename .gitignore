@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Sanal Ortam
+env/
+venv/
+.env
+
+# Build ve Dağıtım
+build/
+dist/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+
+# Diğer
+*.log
