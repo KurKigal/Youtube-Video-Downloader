@@ -8,6 +8,7 @@ import shutil
 import sys
 import re
 import requests
+import zipfile
 import webbrowser
 from PIL import Image
 from io import BytesIO
@@ -16,16 +17,19 @@ from io import BytesIO
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+# FFmpeg İndirme Linki (Windows için)
+FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+
 class YtDlpApp(ctk.CTk):
     """
     YouTube video ve playlist indirme işlemlerini yöneten ana GUI sınıfı.
-    yt-dlp kütüphanesini kullanarak video formatlarını çeker ve indirme işlemini gerçekleştirir.
+    Windows için otomatik FFmpeg kurulumu ve gelişmiş hata yönetimi içerir.
     """
     def __init__(self):
         super().__init__()
 
         # Pencere Yapılandırması
-        self.title("Youtube Video İndirici")
+        self.title("yt-dlp Video İndirici (Windows)")
         self.geometry("950x800") 
         self.minsize(800, 650)   
         
@@ -68,59 +72,75 @@ class YtDlpApp(ctk.CTk):
         content_frame.grid(row=0, column=0)
 
         ctk.CTkLabel(content_frame, text="Youtube Video İndirici", font=("Segoe UI", 32, "bold"), text_color="#ffffff").pack(pady=(0, 20))
-        self.check_label = ctk.CTkLabel(content_frame, text="⏳", font=("Arial", 50), text_color="#0084ff")
+        self.check_label = ctk.CTkLabel(content_frame, text="⚙️", font=("Arial", 50), text_color="#0084ff")
         self.check_label.pack(pady=10)
         self.info_label = ctk.CTkLabel(content_frame, text="Sistem kontrol ediliyor...", font=("Segoe UI", 14), text_color="#a0a0a0")
         self.info_label.pack(pady=(10, 30))
-        self.splash_btn_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-        self.splash_btn_frame.pack()
+        
+        # İndirme barı (Başlangıçta gizli)
+        self.splash_progress = ctk.CTkProgressBar(content_frame, width=400, height=12, progress_color="#00d26a")
+        self.splash_progress.set(0)
 
         self.after(1000, self.check_ffmpeg)
 
     def check_ffmpeg(self):
-        """FFmpeg'in sistemde yüklü olup olmadığını kontrol eder."""
+        """FFmpeg'in sistemde yüklü olup olmadığını kontrol eder. Yoksa indirir."""
         if not self.running: return
         local_ffmpeg = os.path.join(os.getcwd(), "ffmpeg.exe")
         system_ffmpeg = shutil.which("ffmpeg")
 
         if os.path.exists(local_ffmpeg):
             os.environ["PATH"] += os.pathsep + os.getcwd()
-            ffmpeg_found = True
+            self.switch_to_main_menu()
         elif system_ffmpeg:
-            ffmpeg_found = True
+            self.switch_to_main_menu()
         else:
-            ffmpeg_found = False
+            # Otomatik İndirme Başlat
+            self.info_label.configure(text="FFmpeg bulunamadı. Otomatik indiriliyor...", text_color="#ffaa00")
+            self.check_label.configure(text="⬇️", text_color="#ffaa00")
+            self.splash_progress.pack(pady=10)
+            threading.Thread(target=self.download_ffmpeg_thread, daemon=True).start()
 
-        if ffmpeg_found:
-            self.check_label.configure(text="✓", text_color="#00d26a")
-            self.info_label.configure(text="Sistem Hazır! Başlatılıyor...", text_color="#00d26a")
-            self.after(1000, self.switch_to_main_menu)
-        else:
-            self.check_label.configure(text="✘", text_color="#ff4444")
-            self.info_label.configure(text="FFMPEG Bulunamadı.", text_color="#ff4444")
-            if not hasattr(self, 'install_btn'):
-                self.install_btn = ctk.CTkButton(self.splash_btn_frame, text="FFMPEG Yükle", command=self.install_ffmpeg_action, fg_color="#ff5555", hover_color="#cc4444")
-                self.install_btn.pack(pady=5)
-                self.retry_btn = ctk.CTkButton(self.splash_btn_frame, text="Tekrar Dene", command=self.retry_check_action, fg_color="#555555", hover_color="#666666")
-                self.retry_btn.pack(pady=5)
-
-    def install_ffmpeg_action(self):
-        """Kullanıcının FFmpeg yüklemesi için komut satırını başlatır."""
+    def download_ffmpeg_thread(self):
+        """FFmpeg'i indirir, zipten çıkarır ve hazırlar."""
         try:
-            os.system('start cmd /k "winget install ffmpeg && echo. && echo Bitti! Pencereyi kapatin ve uygulamayi restart edin."')
-            CTkMessagebox(title="Bilgi", message="Kurulum bitince uygulamayı YENİDEN BAŞLATIN!", icon="info")
-        except: pass
+            response = requests.get(FFMPEG_URL, stream=True)
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            
+            zip_path = "ffmpeg_temp.zip"
+            with open(zip_path, 'wb') as f:
+                for data in response.iter_content(chunk_size=4096):
+                    if not self.running: return
+                    downloaded += len(data)
+                    f.write(data)
+                    if total_size > 0:
+                        progress = downloaded / total_size
+                        self.after(0, lambda p=progress: self.splash_progress.set(p))
 
-    def retry_check_action(self):
-        """FFmpeg kontrolünü yeniden başlatır."""
-        self.check_label.configure(text="⏳", text_color="#0084ff")
-        self.info_label.configure(text="Kontrol ediliyor...", text_color="#a0a0a0")
-        self.after(1000, self.check_ffmpeg)
+            self.after(0, lambda: self.info_label.configure(text="FFmpeg kuruluyor...", text_color="#0084ff"))
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                for file in zip_ref.namelist():
+                    if file.endswith("ffmpeg.exe"):
+                        source = zip_ref.open(file)
+                        target = open("ffmpeg.exe", "wb")
+                        with source, target:
+                            shutil.copyfileobj(source, target)
+                        break
+            
+            os.remove(zip_path)
+            os.environ["PATH"] += os.pathsep + os.getcwd()
+            self.after(0, self.switch_to_main_menu)
+
+        except Exception as e:
+            self.after(0, lambda: self.info_label.configure(text=f"Hata: {str(e)}", text_color="#ff4444"))
 
     def switch_to_main_menu(self):
         """Splash ekranını kapatıp ana arayüze geçer."""
-        self.splash_frame.destroy()
-        self.build_main_interface()
+        self.check_label.configure(text="✓", text_color="#00d26a")
+        self.info_label.configure(text="Sistem Hazır! Başlatılıyor...", text_color="#00d26a")
+        self.after(1000, lambda: [self.splash_frame.destroy(), self.build_main_interface()])
 
     # ---------------------------------------------------------
     # BÖLÜM 2: ANA ARAYÜZ YAPILANDIRMASI
@@ -299,7 +319,8 @@ class YtDlpApp(ctk.CTk):
         """Video bilgilerini arka planda çeken thread fonksiyonu."""
         if not self.running: return
         try:
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False} 
+            # Playlist hatalarını yok say
+            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False, 'ignoreerrors': True} 
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -309,7 +330,8 @@ class YtDlpApp(ctk.CTk):
             if 'entries' in info:
                 # Playlist durumu
                 self.is_playlist = True
-                self.playlist_entries = list(info['entries'])
+                # Bozuk/Silinmiş videoları filtrele (None check)
+                self.playlist_entries = [x for x in info['entries'] if x is not None]
                 self.current_video_index = 0
                 if not self.playlist_entries:
                     raise Exception("Playlist boş veya videolar alınamadı.")
@@ -354,8 +376,10 @@ class YtDlpApp(ctk.CTk):
                     if key not in seen:
                         ext = f.get('ext')
                         txt = f"📺 {key} ({ext.upper()})"
-                        # En iyi video ve en iyi sesi birleştir
-                        fid = f"bestvideo[height={h}]+bestaudio/best[height={h}]"
+                        
+                        # Windows Media Player Fix: Sesi M4A (AAC) tercih et
+                        fid = f"bestvideo[height={h}]+bestaudio[ext=m4a]/bestvideo[height={h}]+bestaudio/best[height={h}]"
+                        
                         display_list.append(txt)
                         self.format_map[txt] = {'type': 'video', 'id': fid, 'ext': 'mp4'} 
                         seen.add(key)
@@ -419,11 +443,13 @@ class YtDlpApp(ctk.CTk):
         current = self.current_video_index + 1
         self.playlist_count_label.configure(text=f"{current} / {total}")
         
-        if self.current_video_index > 0: self.prev_btn.configure(state="normal", fg_color="#0084ff")
-        else: self.prev_btn.configure(state="disabled", fg_color="#444444")
+        state_prev = "normal" if self.current_video_index > 0 else "disabled"
+        color_prev = "#0084ff" if self.current_video_index > 0 else "#444444"
+        self.prev_btn.configure(state=state_prev, fg_color=color_prev)
             
-        if self.current_video_index < total - 1: self.next_btn.configure(state="normal", fg_color="#0084ff")
-        else: self.next_btn.configure(state="disabled", fg_color="#444444")
+        state_next = "normal" if self.current_video_index < total - 1 else "disabled"
+        color_next = "#0084ff" if self.current_video_index < total - 1 else "#444444"
+        self.next_btn.configure(state=state_next, fg_color=color_next)
 
     def next_video(self):
         """Bir sonraki videoya geçer."""
@@ -483,6 +509,9 @@ class YtDlpApp(ctk.CTk):
         for idx, video_data in enumerate(videos_to_download):
             if not self.running: break
             
+            # Silinmiş videoları atla
+            if not video_data: continue
+
             self.after(0, lambda: self.update_status(f"Video {idx+1}/{total_videos} İndiriliyor: {video_data.get('title')[:30]}...", "#0084ff"))
             
             vid_title = video_data.get('title', 'video')
@@ -499,7 +528,7 @@ class YtDlpApp(ctk.CTk):
                 'quiet': True,
                 'no_warnings': True,
                 'force_overwrites': True,
-                'merge_output_format': 'mp4',
+                'merge_output_format': 'mp4', # Windows uyumluluğu için MP4 zorla
             }
             
             # Ses indirmeleri için post-processor
