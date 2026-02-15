@@ -1,4 +1,4 @@
-# Youtube Video İndirici (GUI) v2.4
+# Youtube Video İndirici (GUI) v1.2
 
 Modern, kullanıcı dostu ve **Cross-Platform** (Windows & Linux) destekli, **yt-dlp** tabanlı gelişmiş Youtube video ve playlist indirme uygulaması.
 
