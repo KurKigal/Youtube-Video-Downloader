@@ -29,7 +29,7 @@ class YtDlpApp(ctk.CTk):
         super().__init__()
 
         # Pencere Yapılandırması
-        self.title("yt-dlp Video İndirici (Windows)")
+        self.title("Youtube Video İndirici (Windows)")
         self.geometry("950x800") 
         self.minsize(800, 650)   
         
