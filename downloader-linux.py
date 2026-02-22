@@ -13,6 +13,8 @@ from PIL import Image
 from io import BytesIO
 import platform
 
+## Bilgilendirme: Şu an Linux ortamlarında VLC kullanıldığı varsayılarak yapılmıştır.
+
 # Görünüm Ayarları
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -577,4 +579,5 @@ class YtDlpApp(ctk.CTk):
 
 if __name__ == "__main__":
     app = YtDlpApp()
+
     app.mainloop()
