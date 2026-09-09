@@ -21,21 +21,16 @@ class BatchSummary:
     failures: tuple[DownloadResult, ...]
     cancelled: tuple[DownloadResult, ...]
 
-    @property
-    def completed_count(self) -> int:
-        return len(self.successes)
 
 
 def summarize_results(results: list[DownloadResult]) -> BatchSummary:
     successes = tuple(item for item in results if item.success)
     cancelled = tuple(
-        item
-        for item in results
+        item for item in results
         if not item.success and item.error_code == ErrorCode.CANCELLED.value
     )
     failures = tuple(
-        item
-        for item in results
+        item for item in results
         if not item.success and item.error_code != ErrorCode.CANCELLED.value
     )
 

@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+APP_DIR_NAME = "YouTube-Downloader-V2"
+
+
 @dataclass(frozen=True, slots=True)
 class DependencyStatus:
     name: str
@@ -30,45 +33,61 @@ class DependencyService:
                 "Deno",
                 "deno",
                 required=True,
-                hint="YouTube formatlarının eksiksiz çözümlenmesi için Deno 2.3+ önerilir.",
+                hint="YouTube formatlarının eksiksiz çözümlenmesi için Deno gerekir.",
             ),
         ]
 
-    def deno_path(self) -> str | None:
-        return self._find_executable("deno")
+    @staticmethod
+    def user_data_dir() -> Path:
+        if os.name == "nt":
+            root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+            return root / APP_DIR_NAME
+        root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+        return root / APP_DIR_NAME
 
-    def ffmpeg_path(self) -> str | None:
-        return self._find_executable("ffmpeg")
-
-    def ffprobe_path(self) -> str | None:
-        return self._find_executable("ffprobe")
+    @classmethod
+    def user_bin_dir(cls) -> Path:
+        return cls.user_data_dir() / "bin"
 
     @staticmethod
-    def _candidate_bin_dirs() -> list[Path]:
+    def release_bin_dirs() -> list[Path]:
         dirs: list[Path] = []
         if getattr(sys, "frozen", False):
-            dirs.extend([Path(sys.executable).resolve().parent / "bin", Path(sys.executable).resolve().parent])
+            exe_dir = Path(sys.executable).resolve().parent
+            dirs.extend([exe_dir / "bin", exe_dir])
         else:
             project_root = Path(__file__).resolve().parents[2]
             dirs.extend([project_root / "bin", project_root])
         return dirs
 
     @classmethod
-    def _find_executable(cls, command: str) -> str | None:
+    def candidate_bin_dirs(cls) -> list[Path]:
+        # User-local repaired components take priority, then portable release-local
+        # components, then the system PATH.
+        return [cls.user_bin_dir(), *cls.release_bin_dirs()]
+
+    @classmethod
+    def find_executable(cls, command: str) -> str | None:
         suffix = ".exe" if os.name == "nt" else ""
         executable_name = command if command.endswith(suffix) else f"{command}{suffix}"
-
-        # Prefer a release-local bin directory so a portable package can be used
-        # without changing the user's global PATH. Fall back to normal PATH lookup.
-        for directory in cls._candidate_bin_dirs():
+        for directory in cls.candidate_bin_dirs():
             candidate = directory / executable_name
             if candidate.is_file():
                 return str(candidate)
         return shutil.which(command)
 
+    def deno_path(self) -> str | None:
+        return self.find_executable("deno")
+
+    def ffmpeg_path(self) -> str | None:
+        return self.find_executable("ffmpeg")
+
+    def ffprobe_path(self) -> str | None:
+        return self.find_executable("ffprobe")
+
     @classmethod
     def _check_executable(cls, name: str, command: str, required: bool, hint: str = "") -> DependencyStatus:
-        path = cls._find_executable(command)
+        path = cls.find_executable(command)
         if not path:
             return DependencyStatus(name, False, required=required, hint=hint)
         try:
@@ -77,9 +96,11 @@ class DependencyService:
             )
             first_line = (completed.stdout or completed.stderr).strip().splitlines()
             version = first_line[0] if first_line else ""
+            available = completed.returncode == 0
         except Exception:
             version = ""
-        return DependencyStatus(name, True, version=version, path=str(Path(path)), required=required, hint=hint)
+            available = False
+        return DependencyStatus(name, available, version=version, path=str(Path(path)), required=required, hint=hint)
 
     @staticmethod
     def _check_python_package(name: str, module: str, required: bool) -> DependencyStatus:

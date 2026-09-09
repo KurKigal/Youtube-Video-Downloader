@@ -4,6 +4,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from youtube_downloader.core.models import DownloadProgress, DownloadRequest
 from youtube_downloader.services.analyzer import MediaAnalyzer
+from youtube_downloader.services.dependency_repair import DependencyRepairService
 from youtube_downloader.services.downloader import YtDlpBackend
 from youtube_downloader.services.thumbnail import fetch_thumbnail
 
@@ -53,3 +54,22 @@ class DownloadWorker(QObject):
             if result.error_code == "cancelled":
                 break
         self.finished.emit(results)
+
+
+class DependencyRepairWorker(QObject):
+    progress = Signal(object)
+    finished = Signal(object)
+    failed = Signal(object)
+
+    def __init__(self, service: DependencyRepairService, components: set[str]):
+        super().__init__()
+        self.service = service
+        self.components = components
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            result = self.service.repair(self.components, self.progress.emit)
+            self.finished.emit(result)
+        except Exception as exc:
+            self.failed.emit(exc)

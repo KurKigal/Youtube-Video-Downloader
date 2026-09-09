@@ -97,3 +97,4 @@ class DownloadResult:
     output_path: Path | None = None
     error_code: str | None = None
     error_message: str | None = None
+    error_detail: str | None = None

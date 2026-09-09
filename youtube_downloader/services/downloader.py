@@ -45,11 +45,18 @@ class YtDlpBackend:
     def cancelled(self) -> bool:
         return self._cancel.is_set()
 
+    def refresh_runtime_dependencies(self) -> None:
+        self.compatibility = CompatibilityService(
+            self.dependencies.ffmpeg_path(),
+            self.dependencies.ffprobe_path(),
+        )
+
     def download(
         self,
         request: DownloadRequest,
         on_progress: Callable[[DownloadProgress], None] | None = None,
     ) -> DownloadResult:
+        self.refresh_runtime_dependencies()
         request.output_dir.mkdir(parents=True, exist_ok=True)
         last_path: Path | None = None
         title = "Video"
@@ -117,8 +124,6 @@ class YtDlpBackend:
             emit(DownloadProgress(status="Tamamlandı", percent=100.0, filename=str(resolved or "")))
             return DownloadResult(True, title=title, output_path=resolved)
         except Exception as exc:
-            # A cancellation can interrupt yt-dlp itself or an FFmpeg compatibility
-            # conversion. In both cases cancellation is a terminal state, not a failure.
             if self._cancel.is_set():
                 classified = classify_error(DownloadCancelled("Download cancelled by user"))
             else:
@@ -129,6 +134,7 @@ class YtDlpBackend:
                 output_path=last_path,
                 error_code=classified.code.value,
                 error_message=classified.user_message,
+                error_detail=classified.technical_message,
             )
 
     def _build_options(self, request: DownloadRequest, progress_hook, postprocessor_hook) -> dict:
@@ -158,6 +164,12 @@ class YtDlpBackend:
         deno = self.dependencies.deno_path()
         if deno:
             opts["js_runtimes"] = {"deno": {"path": deno}}
+
+        ffmpeg = self.dependencies.ffmpeg_path()
+        if ffmpeg:
+            # yt-dlp needs the directory explicitly because repaired components live
+            # in a user-local app folder and are intentionally not added to PATH.
+            opts["ffmpeg_location"] = str(Path(ffmpeg).parent)
 
         if request.browser_cookies:
             opts["cookiesfrombrowser"] = (request.browser_cookies, None, None, None)

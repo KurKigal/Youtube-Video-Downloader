@@ -14,6 +14,7 @@ class ErrorCode(str, Enum):
     FORMAT_UNAVAILABLE = "format_unavailable"
     HTTP_403 = "http_403"
     DISK_FULL = "disk_full"
+    MEDIA_COMPONENT_MISSING = "media_component_missing"
     FFMPEG = "ffmpeg"
     JS_RUNTIME = "js_runtime"
     CANCELLED = "cancelled"
@@ -32,8 +33,13 @@ def classify_error(exc: BaseException | str) -> ClassifiedError:
     text = raw.lower()
 
     rules: tuple[tuple[tuple[str, ...], ErrorCode, str], ...] = (
+        (("cancelled", "canceled", "interrupted by user"), ErrorCode.CANCELLED,
+         "İndirme iptal edildi."),
+        (("ffmpeg bulunamadı", "ffprobe bulunamadı", "ffmpeg not found", "ffprobe not found"),
+         ErrorCode.MEDIA_COMPONENT_MISSING,
+         "Gerekli medya bileşenleri bulunamadı. Uygulama bunları otomatik olarak kurabilir."),
         (("no supported javascript runtime", "javascript runtime"), ErrorCode.JS_RUNTIME,
-         "YouTube çözümlemesi için JavaScript runtime bulunamadı. Deno kurulumunu kontrol edin."),
+         "YouTube çözümlemesi için Deno bulunamadı veya çalıştırılamadı."),
         (("sign in to confirm", "login required", "cookies-from-browser"), ErrorCode.LOGIN_REQUIRED,
          "Bu video oturum açılmasını gerektiriyor. Tarayıcı çerezleriyle tekrar deneyin."),
         (("age-restricted", "age restricted"), ErrorCode.AGE_RESTRICTED,
@@ -49,13 +55,11 @@ def classify_error(exc: BaseException | str) -> ClassifiedError:
         (("no space left on device", "disk full"), ErrorCode.DISK_FULL,
          "Diskte yeterli boş alan yok."),
         (("ffmpeg", "ffprobe"), ErrorCode.FFMPEG,
-         "FFmpeg/FFprobe işlemi başarısız oldu. Sistem bileşenlerini kontrol edin."),
+         "Video işlenirken FFmpeg/FFprobe işlemi başarısız oldu."),
         (("unable to download", "timed out", "connection reset", "network is unreachable"), ErrorCode.NETWORK,
          "Ağ bağlantısı sırasında hata oluştu. Bağlantıyı kontrol edip tekrar deneyin."),
         (("video unavailable", "this video is unavailable", "removed by the uploader"), ErrorCode.VIDEO_UNAVAILABLE,
          "Video artık kullanılamıyor veya kaldırılmış."),
-        (("cancelled", "canceled", "interrupted by user"), ErrorCode.CANCELLED,
-         "İndirme iptal edildi."),
     )
 
     for needles, code, message in rules:

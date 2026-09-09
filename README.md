@@ -1,94 +1,85 @@
-# YouTube Downloader V2 — Release Candidate 1
+# YouTube Downloader V2.0.0
 
 PySide6 arayüzlü, `yt-dlp` tabanlı Windows/Linux video ve ses indirici.
 
-> V2 kullanıcı testleri için Release Candidate aşamasındadır. Eski CustomTkinter sürümü `legacy/` altında korunur.
+V2; eski CustomTkinter sürümünün yeniden yazılmış, modüler ve daha sağlam sürümüdür. Eski kaynaklar `legacy/` altında korunur.
 
+## Öne çıkanlar
 
-## RC1’de değişenler
+- Windows/Linux için tek codebase
+- PySide6 arayüz
+- Sabit YouTube `format_id` bağımlılığı olmadan dinamik kalite çözümleme
+- 4K/HDR/yüksek FPS formatlarını analiz etme
+- `Uyumlu MP4`, `En iyi kalite`, `Orijinale yakın` video profilleri
+- MP3, M4A, Opus, FLAC, WAV ve dönüştürmesiz ses seçenekleri
+- Playlist seçimi ve batch indirme
+- Retry / fragment retry / resume
+- İptal durumunu hatadan ayıran download state yönetimi
+- Chrome / Edge / Firefox / Brave cookie desteği
+- FFprobe ile çıktı doğrulama
+- Akıllı FFmpeg dönüşümü: yalnız uyumsuz stream gerektiğinde dönüştürülür
+- Deno + EJS desteği
 
-- Kullanıcı iptali artık hata olarak raporlanmaz; `İndirme iptal edildi` ayrı terminal durumudur.
-- Playlist indirirken iptal isteği videolar arasında kaybolmaz; tüm batch için tek cancellation state kullanılır.
-- FFmpeg dönüşümü sırasında yapılan iptal de `FFmpeg hatası` yerine doğru şekilde iptal olarak sınıflandırılır.
-- Pencere başlangıç boyutu ekranın kullanılabilir alanına göre otomatik ayarlanır ve ortalanır.
-- 980 px altındaki pencere genişliklerinde önizleme ve ayarlar kartları otomatik olarak alt alta geçer.
-- Ana içerik QScrollArea üzerinde kaldığı için küçük ekranlarda dikey scroll ile tüm kontrollere erişilebilir.
-- Release build için `YouTubeDownloaderV2.spec`, `requirements-build.txt` ve `build_release_windows.ps1` eklendi.
-- Release exe, `bin/ffmpeg(.exe)`, `bin/ffprobe(.exe)` ve `bin/deno(.exe)` gibi uygulama-yanı bağımlılıkları PATH'ten önce algılayabilir.
+## Otomatik sistem bileşeni kurulumu
 
-Windows release build:
+Windows sürümü FFmpeg, FFprobe veya Deno bulunmadığında kullanıcıya otomatik kurulum sunar.
 
-```powershell
-.\build_release_windows.ps1
+Bileşenler:
+
+```text
+%LOCALAPPDATA%\YouTube-Downloader-V2\bin
 ```
 
-Çıktı: `release/YouTube-Downloader-V2-Windows-x64.zip`
+altına kurulur. Yönetici izni ve sistem PATH değişikliği gerekmez.
 
-## Alpha 2'de değişenler
+Kurulum akışı:
 
-- Arayüz yeniden düzenlendi: kart içi siyah label şeritleri kaldırıldı, spacing ve tipografi iyileştirildi.
-- Önizleme alanı pencere boyutuna göre daha düzgün ölçeklenir.
-- İndirme ayarları daha okunur form düzenine taşındı.
-- Kayıt konumu salt-okunur alan + daha belirgin `Klasör seç` butonuna dönüştürüldü.
-- Playlist için `Tümünü seç` ve `Seçimi temizle` kontrolleri eklendi.
-- İndirme durum kartı sadeleştirildi; terminal/debug görünümlü satır kaldırıldı.
-- yt-dlp'nin ANSI renk kodlu `_speed_str` / `_eta_str` değerleri artık UI'a taşınmıyor. Hız ve ETA ham sayısal veriden uygulama tarafından formatlanıyor.
-- Geçici `.f616.mp4` benzeri stream dosya adları ilerleme ekranında gösterilmiyor.
-- Windows'ta görülen `QFont::setPointSize ... -1` uyarısını önlemek için uygulama fontu geçerli point size ile açıkça ayarlanıyor.
+1. Bileşen eksikliği tespit edilir.
+2. Kullanıcı `Otomatik Kur / Onar` seçer.
+3. Resmî/sağlayıcı kaynaktan ZIP ve SHA-256 checksum indirilir.
+4. Arşiv SHA-256 ile doğrulanır.
+5. `ffmpeg.exe`, `ffprobe.exe` ve/veya `deno.exe` kullanıcı-local klasöre kurulur.
+6. Binary `--version` ile çalıştırılarak doğrulanır.
+7. Bekleyen analiz/indirme otomatik tekrar denenebilir.
 
-## V2'deki temel mimari değişiklikler
+FFmpeg işlemi gerçekten başarısız olursa eksik bileşen hatasından ayrı gösterilir. Hata penceresinde `Bileşenleri Onar`, `Tekrar Dene` ve teknik detay akışı bulunur.
 
-- Windows ve Linux için **tek codebase**.
-- UI ile indirme motoru birbirinden ayrıldı.
-- Kalite seçimi sabit YouTube `format_id`'lerine bağlı değil; her video için indirme anında yeniden çözülür.
-- Playlist'te her videoya aynı format ID'sini zorlama kaldırıldı.
-- `Uyumlu MP4`, `En iyi kalite` ve `Orijinale yakın` video profilleri bulunur.
-- Ses için MP3, M4A, Opus, FLAC, WAV ve dönüştürmesiz en iyi ses seçenekleri bulunur.
-- Retry, fragment retry, continue/resume ve hata sınıflandırma altyapısı bulunur.
-- Başarısız indirmeler başarı olarak gösterilmez; playlist sonuçları ayrı raporlanır.
-- İptal desteği vardır.
-- FFmpeg, FFprobe, Deno, yt-dlp ve EJS bağımlılık kontrolleri bulunur.
-- `Uyumlu MP4` çıktısı FFprobe ile doğrulanır; gerekiyorsa FFmpeg ile H.264/AAC uyumluluğu sağlanır.
-- Chrome, Edge, Firefox ve Brave tarayıcı çerezlerini kullanma seçeneği bulunur.
+Üçüncü taraf bileşen ayrıntıları için `THIRD_PARTY_COMPONENTS.md` dosyasına bakın.
 
-## Gereksinimler
+## Gereksinimler — kaynak koddan çalıştırma
 
 - Python 3.12+
-- FFmpeg + FFprobe
-- Deno 2.3+
-
-Python bağımlılıkları:
+- Windows'ta FFmpeg/FFprobe/Deno eksikse uygulama otomatik kurabilir.
 
 ```bash
 python -m pip install -r requirements.txt
-```
-
-Kontroller:
-
-```bash
-deno --version
-ffmpeg -version
-ffprobe -version
-```
-
-## Çalıştırma
-
-```bash
 python main.py
-```
-
-veya editable kurulumdan sonra:
-
-```bash
-python -m pip install -e .
-youtube-downloader
 ```
 
 ## Test
 
 ```bash
-pytest
+python -m pytest
 ```
+
+Windows release script'i, Windows `%TEMP%` izin sorunlarından etkilenmemek için pytest geçici klasörünü proje içinde oluşturur ve herhangi bir test başarısızsa build'i durdurur.
+
+## Windows release build
+
+PowerShell:
+
+```powershell
+.\.env\Scripts\Activate.ps1
+.\build_release_windows.ps1
+```
+
+Çıktı:
+
+```text
+release\YouTube-Downloader-V2-Windows-x64.zip
+```
+
+Default release ZIP'i FFmpeg/Deno binary'lerini gömmez; uygulama eksik bileşenleri ilk ihtiyaçta kullanıcı-local olarak kurabilir. İsterseniz exe yanına `bin/` klasörü koyup `ffmpeg.exe`, `ffprobe.exe`, `deno.exe` ile portable override da kullanabilirsiniz.
 
 ## Mimari
 
@@ -99,11 +90,13 @@ youtube_downloader/
 │   ├── filenames.py
 │   ├── formats.py
 │   ├── humanize.py
-│   └── models.py
+│   ├── models.py
+│   └── results.py
 ├── services/
 │   ├── analyzer.py
 │   ├── compatibility.py
 │   ├── dependencies.py
+│   ├── dependency_repair.py
 │   ├── downloader.py
 │   ├── media_probe.py
 │   └── thumbnail.py
@@ -115,15 +108,6 @@ youtube_downloader/
 ## Sınırlar
 
 Uygulama kullanıcının normalde erişebildiği içeriklerle çalışmayı hedefler. DRM korumasını, yetkisiz private video erişimini veya kullanıcının sahip olmadığı üyelik erişimini aşmayı hedeflemez.
-
-## Legacy
-
-V1 kaynakları:
-
-```text
-legacy/downloader-windows.py
-legacy/downloader-linux.py
-```
 
 ## License
 

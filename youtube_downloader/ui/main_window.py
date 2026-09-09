@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtGui import QFont, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -27,13 +28,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from youtube_downloader.core.errors import classify_error
+from youtube_downloader.core.errors import ErrorCode, classify_error
 from youtube_downloader.core.results import BatchState, summarize_results
 from youtube_downloader.core.models import AudioFormat, DownloadRequest, MediaType, VideoProfile
 from youtube_downloader.services.analyzer import MediaAnalyzer
 from youtube_downloader.services.dependencies import DependencyService
+from youtube_downloader.services.dependency_repair import DependencyRepairService
 from youtube_downloader.services.downloader import YtDlpBackend
-from youtube_downloader.ui.workers import AnalysisWorker, DownloadWorker
+from youtube_downloader.ui.workers import AnalysisWorker, DependencyRepairWorker, DownloadWorker
 
 
 APP_STYLE = """
@@ -256,19 +258,23 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("YouTube Downloader V2")
-        # Keep the app usable on smaller laptop screens. The central QScrollArea
-        # handles vertical overflow; the body switches to a stacked layout when narrow.
         self.setMinimumSize(720, 560)
         self._body_is_stacked = False
 
         self.dependencies = DependencyService()
         self.analyzer = MediaAnalyzer(self.dependencies)
         self.backend = YtDlpBackend(self.dependencies)
+        self.repair_service = DependencyRepairService(self.dependencies)
         self.analysis = None
         self.analysis_thread: QThread | None = None
         self.analysis_worker = None
         self.download_thread: QThread | None = None
         self.download_worker = None
+        self.repair_thread: QThread | None = None
+        self.repair_worker = None
+        self._startup_repair_prompt_shown = False
+        self._retry_action_after_repair: str | None = None
+        self._dependency_statuses = {}
         self.save_path = Path.home() / "Downloads"
         if not self.save_path.exists():
             self.save_path = Path.home()
@@ -500,7 +506,6 @@ class MainWindow(QMainWindow):
         if not screen:
             self.resize(1180, 790)
             return
-
         available = screen.availableGeometry()
         width = min(1180, max(720, int(available.width() * 0.90)))
         height = min(790, max(560, int(available.height() * 0.88)))
@@ -510,17 +515,14 @@ class MainWindow(QMainWindow):
             available.y() + max(0, (available.height() - height) // 2),
         )
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API name
+    def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._apply_responsive_layout(event.size().width())
 
     def _apply_responsive_layout(self, width: int) -> None:
-        # Two-column layout is comfortable above this threshold. Below it, moving
-        # settings under the preview avoids clipped controls and horizontal scrolling.
         should_stack = width < 980
         if should_stack == self._body_is_stacked:
             return
-
         self._body_is_stacked = should_stack
         if should_stack:
             self.body_layout.addWidget(self.preview_card, 0, 0, 1, 2)
@@ -563,8 +565,9 @@ class MainWindow(QMainWindow):
         layout.addSpacing(12)
         return label
 
-    def _refresh_dependencies(self) -> None:
+    def _refresh_dependencies(self) -> list[str]:
         statuses = self.dependencies.check_all()
+        self._dependency_statuses = {item.name: item for item in statuses}
         missing = [item.name for item in statuses if item.required and not item.available]
         if missing:
             self.engine_label.setProperty("state", "warning")
@@ -574,6 +577,157 @@ class MainWindow(QMainWindow):
             self.engine_label.setText("● Motor hazır")
         self.engine_label.style().unpolish(self.engine_label)
         self.engine_label.style().polish(self.engine_label)
+        return missing
+
+    def _missing_runtime_components(self) -> set[str]:
+        self._refresh_dependencies()
+        return {
+            name for name in ("FFmpeg", "FFprobe", "Deno")
+            if name in self._dependency_statuses and not self._dependency_statuses[name].available
+        }
+
+    def maybe_offer_dependency_repair(self) -> None:
+        if self._startup_repair_prompt_shown or os.name != "nt":
+            return
+        self._startup_repair_prompt_shown = True
+        missing = self._missing_runtime_components()
+        if not missing:
+            return
+        self._ask_dependency_repair(
+            missing,
+            title="Gerekli bileşenler eksik",
+            message=(
+                "Uygulamanın tüm video ve ses özelliklerini kullanabilmesi için "
+                f"{', '.join(sorted(missing))} gerekiyor.\n\n"
+                "Bileşenler kullanıcı hesabınıza otomatik kurulabilir; yönetici izni gerekmez."
+            ),
+        )
+
+    def _ask_dependency_repair(
+        self,
+        components: set[str],
+        *,
+        title: str,
+        message: str,
+        retry_action: str | None = None,
+        technical_detail: str = "",
+    ) -> bool:
+        if os.name != "nt":
+            QMessageBox.warning(self, title, message)
+            return False
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(title)
+        box.setText(message)
+        box.setInformativeText(
+            "Otomatik kurulum dosyaları doğrulandıktan sonra "
+            "%LOCALAPPDATA%\\YouTube-Downloader-V2\\bin klasörüne yerleştirir."
+        )
+        if technical_detail:
+            box.setDetailedText(technical_detail[:5000])
+        install_button = box.addButton("Otomatik Kur / Onar", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Şimdi Değil", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() == install_button:
+            self._start_dependency_repair(components, retry_action=retry_action)
+            return True
+        return False
+
+    def _start_dependency_repair(self, components: set[str], retry_action: str | None = None) -> None:
+        if self.repair_thread and self.repair_thread.isRunning():
+            return
+
+        self._retry_action_after_repair = retry_action
+        self.analyze_button.setEnabled(False)
+        self.download_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        self.engine_label.setProperty("state", "warning")
+        self.engine_label.setText("● Bileşenler kuruluyor…")
+        self.engine_label.style().unpolish(self.engine_label)
+        self.engine_label.style().polish(self.engine_label)
+        self.status_label.setText("Sistem bileşenleri hazırlanıyor")
+        self.progress_item.setText("Güvenli indirme ve doğrulama başlatılıyor…")
+        self.progress_detail.setText("Bu işlem internet hızına göre birkaç dakika sürebilir.")
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress_percent.setText("0%")
+
+        thread = QThread(self)
+        worker = DependencyRepairWorker(self.repair_service, set(components))
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._repair_progress)
+        worker.finished.connect(self._repair_finished)
+        worker.failed.connect(self._repair_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_repair_worker)
+        self.repair_thread = thread
+        self.repair_worker = worker
+        thread.start()
+
+    def _repair_progress(self, progress) -> None:
+        self.status_label.setText(f"{progress.component} hazırlanıyor")
+        self.progress_item.setText(progress.message)
+        self.progress.setValue(int(progress.percent))
+        self.progress_percent.setText(f"{int(progress.percent)}%")
+
+    def _repair_finished(self, result) -> None:
+        self.backend.refresh_runtime_dependencies()
+        missing = self._refresh_dependencies()
+        self.analyze_button.setEnabled(True)
+        self.download_button.setEnabled(bool(self.analysis))
+        self.cancel_button.setEnabled(False)
+
+        if result.success:
+            self.status_label.setText("Sistem bileşenleri hazır")
+            self.progress_item.setText("Kurulum ve doğrulama tamamlandı")
+            self.progress.setValue(100)
+            self.progress_percent.setText("100%")
+            installed = ", ".join(result.installed) or "Bileşenler"
+            self.progress_detail.setText(f"Hazır: {installed}")
+            retry = self._retry_action_after_repair
+            self._retry_action_after_repair = None
+            if retry == "download":
+                QTimer.singleShot(150, self.start_download)
+            elif retry == "analyze":
+                QTimer.singleShot(150, self.analyze_url)
+            elif not missing:
+                QMessageBox.information(self, "Bileşenler hazır", "Gerekli sistem bileşenleri başarıyla kuruldu ve doğrulandı.")
+            return
+
+        self._retry_action_after_repair = None
+        self.status_label.setText("Bileşen kurulumu tamamlanamadı")
+        self.progress_item.setText("Bazı bileşenler kurulamadı")
+        self.progress_detail.setText(", ".join(result.failed))
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Kurulum tamamlanamadı")
+        box.setText("Gerekli bileşenlerden bazıları otomatik olarak kurulamadı.")
+        if result.details:
+            box.setDetailedText(result.details[:5000])
+        box.exec()
+
+    def _repair_failed(self, exc) -> None:
+        self._retry_action_after_repair = None
+        self.analyze_button.setEnabled(True)
+        self.download_button.setEnabled(bool(self.analysis))
+        self.cancel_button.setEnabled(False)
+        self._refresh_dependencies()
+        self.status_label.setText("Bileşen kurulumu başarısız")
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Kurulum hatası")
+        box.setText("Sistem bileşenleri kurulurken beklenmeyen bir hata oluştu.")
+        box.setDetailedText(str(exc)[:5000])
+        box.exec()
+
+    def _clear_repair_worker(self) -> None:
+        self.repair_worker = None
+        self.repair_thread = None
 
     def _sync_option_visibility(self) -> None:
         is_audio = self.media_type.currentData() is MediaType.AUDIO
@@ -682,14 +836,42 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Analiz başarısız")
         self.progress_item.setText(classified.user_message)
         self.progress_detail.clear()
-        QMessageBox.critical(
-            self,
-            "Video analiz edilemedi",
-            f"{classified.user_message}\n\nTeknik detay:\n{classified.technical_message[:800]}",
-        )
+
+        if classified.code is ErrorCode.JS_RUNTIME and os.name == "nt":
+            self._ask_dependency_repair(
+                {"Deno"},
+                title="Deno gerekli",
+                message=(
+                    "YouTube bu video için JavaScript çözümlemesi gerektiriyor. "
+                    "Deno otomatik olarak kurulup video yeniden analiz edilebilir."
+                ),
+                retry_action="analyze",
+                technical_detail=classified.technical_message,
+            )
+            return
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Video analiz edilemedi")
+        box.setText(classified.user_message)
+        box.setDetailedText(classified.technical_message[:5000])
+        box.exec()
 
     def start_download(self) -> None:
         if not self.analysis:
+            return
+
+        missing_media = self._missing_runtime_components().intersection({"FFmpeg", "FFprobe"})
+        if missing_media:
+            self._ask_dependency_repair(
+                {"FFmpeg", "FFprobe"},
+                title="Medya bileşenleri gerekli",
+                message=(
+                    "Video/ses birleştirme ve dönüştürme için FFmpeg ve FFprobe gerekiyor. "
+                    "Uygulama bu bileşenleri otomatik olarak kurabilir."
+                ),
+                retry_action="download",
+            )
             return
 
         media_type = self.media_type.currentData()
@@ -724,8 +906,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "İndirilecek video yok", "Playlist içinde seçili bir video bulunamadı.")
             return
 
-        # Reset cancellation before exposing the Cancel button. Doing it inside the
-        # worker would create a race where an immediate click could be cleared.
         self.backend.reset_cancel()
         self.download_button.setEnabled(False)
         self.analyze_button.setEnabled(False)
@@ -778,14 +958,13 @@ class MainWindow(QMainWindow):
 
         if summary.state is BatchState.CANCELLED:
             self.status_label.setText("İndirme iptal edildi")
+            self.progress_percent.setText("İptal")
             if successes:
                 self.progress_item.setText(f"İptal edilmeden önce {len(successes)} dosya tamamlandı")
                 self.progress_detail.setText(str(self.save_path))
             else:
                 self.progress_item.setText("İşlem kullanıcı tarafından durduruldu")
-                self.progress_detail.setText("Tamamlanmamış indirme devam dosyaları daha sonra sürdürülebilir.")
-            # Preserve the last visible progress instead of presenting cancellation as 0% failure.
-            self.progress_percent.setText("İptal")
+                self.progress_detail.setText("Tamamlanmamış indirme daha sonra yeniden başlatılabilir.")
             return
 
         if summary.state is BatchState.COMPLETED:
@@ -813,10 +992,61 @@ class MainWindow(QMainWindow):
             self.progress_item.setText(failures[0].error_message or "İndirme tamamlanamadı")
 
         self.progress_detail.clear()
+        repairable = next(
+            (
+                item for item in failures
+                if item.error_code in {
+                    ErrorCode.MEDIA_COMPONENT_MISSING.value,
+                    ErrorCode.FFMPEG.value,
+                }
+            ),
+            None,
+        )
+        if repairable:
+            self._show_media_component_failure(repairable)
+            return
+
+        js_failure = next((item for item in failures if item.error_code == ErrorCode.JS_RUNTIME.value), None)
+        if js_failure and os.name == "nt":
+            self._ask_dependency_repair(
+                {"Deno"},
+                title="Deno gerekli",
+                message=js_failure.error_message or "Deno gerekli.",
+                retry_action="download",
+                technical_detail=js_failure.error_detail or "",
+            )
+            return
+
         error_lines = [f"• {item.title}: {item.error_message or item.error_code}" for item in failures[:8]]
         if len(failures) > 8:
             error_lines.append(f"• … ve {len(failures) - 8} hata daha")
-        QMessageBox.warning(self, "İndirme sonucu", "\n".join(error_lines))
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("İndirme sonucu")
+        box.setText("\n".join(error_lines))
+        details = "\n\n".join(item.error_detail or "" for item in failures if item.error_detail)
+        if details:
+            box.setDetailedText(details[:5000])
+        box.exec()
+
+    def _show_media_component_failure(self, result) -> None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Video dönüştürülemedi")
+        box.setText(result.error_message or "FFmpeg/FFprobe işlemi tamamlanamadı.")
+        box.setInformativeText(
+            "Bileşenleri otomatik olarak onarabilir veya aynı indirmeyi tekrar deneyebilirsiniz."
+        )
+        if result.error_detail:
+            box.setDetailedText(result.error_detail[:5000])
+        repair_button = box.addButton("Bileşenleri Onar", QMessageBox.ButtonRole.AcceptRole)
+        retry_button = box.addButton("Tekrar Dene", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Kapat", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() == repair_button:
+            self._start_dependency_repair({"FFmpeg", "FFprobe"}, retry_action="download")
+        elif box.clickedButton() == retry_button:
+            QTimer.singleShot(100, self.start_download)
 
     def cancel_download(self) -> None:
         self.backend.cancel()
@@ -842,4 +1072,5 @@ def run_app() -> int:
     window = MainWindow()
     window._apply_initial_window_size()
     window.show()
+    QTimer.singleShot(350, window.maybe_offer_dependency_repair)
     return app.exec()
