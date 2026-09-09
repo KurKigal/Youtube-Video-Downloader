@@ -1,112 +1,130 @@
-# Youtube Video İndirici (GUI) v1.2
+# YouTube Downloader V2 — Release Candidate 1
 
-Modern, kullanıcı dostu ve **Cross-Platform** (Windows & Linux) destekli, **yt-dlp** tabanlı gelişmiş Youtube video ve playlist indirme uygulaması.
+PySide6 arayüzlü, `yt-dlp` tabanlı Windows/Linux video ve ses indirici.
 
-<img width="950" height="832" alt="Ekran Görüntüsü" src="https://github.com/user-attachments/assets/9fdec04e-10fa-4cc5-9506-618b343d6f41" />
+> V2 kullanıcı testleri için Release Candidate aşamasındadır. Eski CustomTkinter sürümü `legacy/` altında korunur.
 
-## 🚀 Özellikler
 
-- **Çoklu Platform Desteği:** Hem Windows hem de Linux için optimize edilmiş ayrı sürümler.
-- **📺 Gelişmiş Playlist Desteği:** - Playlist linklerini otomatik algılar.
-  - Videolar arasında `Önceki` ve `Sonraki` butonları ile gezinebilirsiniz.
-  - Tüm listeyi sırayla indirir.
-- **⚙️ Otomatik FFmpeg Kurulumu (Windows):** Windows sürümünde FFmpeg eksikse program otomatik olarak indirip kurar. Manuel ayar gerektirmez.
-- **🖼️ Görsel Önizleme:** İndirilecek videonun kapağını (thumbnail), başlığını, kanalını ve süresini gösterir.
-- **🛡️ Akıllı Dosya Yönetimi:** - Aynı isimde dosya varsa üzerine yazmaz, `(1)`, `(2)` şeklinde numaralandırır.
-  - Windows Media Player uyumluluğu için sesleri otomatik optimize eder.
-- **🎨 Modern Arayüz:** `customtkinter` ile hazırlanmış, göze hitap eden karanlık mod tasarımı.
+## RC1’de değişenler
 
----
+- Kullanıcı iptali artık hata olarak raporlanmaz; `İndirme iptal edildi` ayrı terminal durumudur.
+- Playlist indirirken iptal isteği videolar arasında kaybolmaz; tüm batch için tek cancellation state kullanılır.
+- FFmpeg dönüşümü sırasında yapılan iptal de `FFmpeg hatası` yerine doğru şekilde iptal olarak sınıflandırılır.
+- Pencere başlangıç boyutu ekranın kullanılabilir alanına göre otomatik ayarlanır ve ortalanır.
+- 980 px altındaki pencere genişliklerinde önizleme ve ayarlar kartları otomatik olarak alt alta geçer.
+- Ana içerik QScrollArea üzerinde kaldığı için küçük ekranlarda dikey scroll ile tüm kontrollere erişilebilir.
+- Release build için `YouTubeDownloaderV2.spec`, `requirements-build.txt` ve `build_release_windows.ps1` eklendi.
+- Release exe, `bin/ffmpeg(.exe)`, `bin/ffprobe(.exe)` ve `bin/deno(.exe)` gibi uygulama-yanı bağımlılıkları PATH'ten önce algılayabilir.
 
-## 📥 Kurulum ve Kullanım
+Windows release build:
 
-### 🪟 Windows Kullanıcıları İçin
-
-**Yöntem 1: Hazır .EXE (Önerilen)**
-Python kurmanıza gerek yoktur.
-1. [Releases](https://github.com/KurKigal/Youtube-Video-Downloader/releases) kısmından en son sürümü (`downloader_app.exe`) indirin.
-2. Çift tıklayıp çalıştırın.
-3. *Not: FFmpeg eksikse program ilk açılışta otomatik olarak indirecektir.*
-
-**Yöntem 2: Kaynak Koddan Çalıştırma**
-1. Repoyu klonlayın veya indirin.
-2. Gerekli kütüphaneleri kurun:
-   ```bash
-   pip install -r requirements.txt
-
+```powershell
+.\build_release_windows.ps1
 ```
 
-3. Windows sürümünü çalıştırın:
+Çıktı: `release/YouTube-Downloader-V2-Windows-x64.zip`
+
+## Alpha 2'de değişenler
+
+- Arayüz yeniden düzenlendi: kart içi siyah label şeritleri kaldırıldı, spacing ve tipografi iyileştirildi.
+- Önizleme alanı pencere boyutuna göre daha düzgün ölçeklenir.
+- İndirme ayarları daha okunur form düzenine taşındı.
+- Kayıt konumu salt-okunur alan + daha belirgin `Klasör seç` butonuna dönüştürüldü.
+- Playlist için `Tümünü seç` ve `Seçimi temizle` kontrolleri eklendi.
+- İndirme durum kartı sadeleştirildi; terminal/debug görünümlü satır kaldırıldı.
+- yt-dlp'nin ANSI renk kodlu `_speed_str` / `_eta_str` değerleri artık UI'a taşınmıyor. Hız ve ETA ham sayısal veriden uygulama tarafından formatlanıyor.
+- Geçici `.f616.mp4` benzeri stream dosya adları ilerleme ekranında gösterilmiyor.
+- Windows'ta görülen `QFont::setPointSize ... -1` uyarısını önlemek için uygulama fontu geçerli point size ile açıkça ayarlanıyor.
+
+## V2'deki temel mimari değişiklikler
+
+- Windows ve Linux için **tek codebase**.
+- UI ile indirme motoru birbirinden ayrıldı.
+- Kalite seçimi sabit YouTube `format_id`'lerine bağlı değil; her video için indirme anında yeniden çözülür.
+- Playlist'te her videoya aynı format ID'sini zorlama kaldırıldı.
+- `Uyumlu MP4`, `En iyi kalite` ve `Orijinale yakın` video profilleri bulunur.
+- Ses için MP3, M4A, Opus, FLAC, WAV ve dönüştürmesiz en iyi ses seçenekleri bulunur.
+- Retry, fragment retry, continue/resume ve hata sınıflandırma altyapısı bulunur.
+- Başarısız indirmeler başarı olarak gösterilmez; playlist sonuçları ayrı raporlanır.
+- İptal desteği vardır.
+- FFmpeg, FFprobe, Deno, yt-dlp ve EJS bağımlılık kontrolleri bulunur.
+- `Uyumlu MP4` çıktısı FFprobe ile doğrulanır; gerekiyorsa FFmpeg ile H.264/AAC uyumluluğu sağlanır.
+- Chrome, Edge, Firefox ve Brave tarayıcı çerezlerini kullanma seçeneği bulunur.
+
+## Gereksinimler
+
+- Python 3.12+
+- FFmpeg + FFprobe
+- Deno 2.3+
+
+Python bağımlılıkları:
+
 ```bash
-python downloader_windows.py
-
+python -m pip install -r requirements.txt
 ```
 
+Kontroller:
 
-
-### 🐧 Linux Kullanıcıları İçin (Arch, Ubuntu, Fedora...)
-
-Linux sürümü sistem temasını ve fontlarını otomatik algılar.
-
-1. Repoyu klonlayın:
 ```bash
-git clone [https://github.com/KurKigal/Youtube-Video-Downloader.git](https://github.com/KurKigal/Youtube-Video-Downloader.git)
-cd Youtube-Video-Downloader
-
+deno --version
+ffmpeg -version
+ffprobe -version
 ```
 
+## Çalıştırma
 
-2. Gerekli kütüphaneleri kurun:
 ```bash
-pip install -r requirements.txt
-
+python main.py
 ```
 
+veya editable kurulumdan sonra:
 
-3. **Önemli:** Sisteminizde FFmpeg yüklü olmalıdır. Yüklü değilse terminalden kurun:
-* **Arch Linux:** `sudo pacman -S ffmpeg`
-* **Ubuntu/Debian:** `sudo apt install ffmpeg`
-* **Fedora:** `sudo dnf install ffmpeg`
-
-
-4. Uygulamayı çalıştırın:
 ```bash
-python downloader_linux.py
-
+python -m pip install -e .
+youtube-downloader
 ```
 
+## Test
 
-
----
-
-## 🛠️ Gereksinimler (Kaynak Kod İçin)
-
-* Python 3.x
-* `customtkinter`
-* `yt-dlp`
-* `Pillow`
-* `requests`
-* `CTkMessagebox`
-
-## 🤝 Katkıda Bulunma
-
-Hataları bildirmek veya özellik isteğinde bulunmak için [Issues](https://www.google.com/search?q=https://github.com/KurKigal/Youtube-Video-Downloader/issues) kısmını kullanabilirsiniz. Pull request'ler memnuniyetle karşılanır.
-
-## 📄 Lisans
-
-Bu proje açık kaynaklıdır ve eğitim amaçlı geliştirilmiştir.
-
----
-
-*Geliştirici: [Emirhan Keser*](https://github.com/KurKigal)
-
+```bash
+pytest
 ```
 
-### Neleri Değiştirdim/Ekledim?
+## Mimari
 
-1.  **Dosya İsimleri:** Artık `downloader_app.py` yerine `downloader_windows.py` ve `downloader_linux.py` referansı verdik.
-2.  **Linux Özel Bölümü:** Linux kullanıcıları için FFmpeg'in terminalden nasıl kurulacağını ekledim (Çünkü Linux kodunda otomatik indirme yok, uyarı var).
-3.  **Yeni Özellikler:** Playlist navigasyonu, overwrite koruması ve Windows Media Player uyumluluğu gibi yeni eklediğimiz özellikleri listeye yazdım.
-4.  **Yapı:** Windows ve Linux kurulumlarını birbirinden ayırarak okuyucunun kafasının karışmasını engelledim.
-
+```text
+youtube_downloader/
+├── core/
+│   ├── errors.py
+│   ├── filenames.py
+│   ├── formats.py
+│   ├── humanize.py
+│   └── models.py
+├── services/
+│   ├── analyzer.py
+│   ├── compatibility.py
+│   ├── dependencies.py
+│   ├── downloader.py
+│   ├── media_probe.py
+│   └── thumbnail.py
+└── ui/
+    ├── main_window.py
+    └── workers.py
 ```
+
+## Sınırlar
+
+Uygulama kullanıcının normalde erişebildiği içeriklerle çalışmayı hedefler. DRM korumasını, yetkisiz private video erişimini veya kullanıcının sahip olmadığı üyelik erişimini aşmayı hedeflemez.
+
+## Legacy
+
+V1 kaynakları:
+
+```text
+legacy/downloader-windows.py
+legacy/downloader-linux.py
+```
+
+## License
+
+Bkz. `LICENSE`.

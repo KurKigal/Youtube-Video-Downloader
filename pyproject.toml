@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emirhan-youtube-downloader"
+version = "2.0.0rc1"
+description = "Cross-platform PySide6 desktop frontend for yt-dlp"
+requires-python = ">=3.12"
+dependencies = [
+  "PySide6>=6.8,<7",
+  "requests>=2.32,<3",
+  "yt-dlp[default]",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9"]
+
+[project.scripts]
+youtube-downloader = "youtube_downloader.ui.main_window:run_app"
+
+[tool.setuptools.packages.find]
+include = ["youtube_downloader*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

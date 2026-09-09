@@ -1,21 +1,17 @@
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Sanal Ortam
-env/
+.pytest_cache/
+.venv/
 venv/
-.env
-
-# Build ve Dağıtım
-build/
 dist/
+build/
 *.spec
-
-# IDE
-.vscode/
-.idea/
-
-# Diğer
+*.part
+*.ytdl
+ffmpeg_temp.zip
+.env/
+venv/
+__pycache__/
+*.pyc
+release/
 *.log

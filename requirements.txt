@@ -1,5 +1,4 @@
-customtkinter
-ctkmessagebox
-yt-dlp
-Pillow
-requests
+PySide6>=6.8,<7
+requests>=2.32,<3
+yt-dlp[default]
+pytest>=8.3,<9
