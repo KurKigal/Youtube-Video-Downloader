@@ -85,6 +85,19 @@ class DependencyService:
     def ffprobe_path(self) -> str | None:
         return self.find_executable("ffprobe")
 
+    @staticmethod
+    def version_args(command: str) -> tuple[str, ...]:
+        """Return the version flag expected by each runtime.
+
+        FFmpeg and FFprobe use the single-dash ``-version`` option, while Deno
+        uses the conventional ``--version`` option. Treating them all the same
+        caused valid FFmpeg installations to be reported as missing.
+        """
+        stem = Path(command).stem.lower()
+        if stem in {"ffmpeg", "ffprobe"}:
+            return ("-version",)
+        return ("--version",)
+
     @classmethod
     def _check_executable(cls, name: str, command: str, required: bool, hint: str = "") -> DependencyStatus:
         path = cls.find_executable(command)
@@ -92,7 +105,11 @@ class DependencyService:
             return DependencyStatus(name, False, required=required, hint=hint)
         try:
             completed = subprocess.run(
-                [path, "--version"], capture_output=True, text=True, timeout=5, check=False
+                [path, *cls.version_args(command)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
             )
             first_line = (completed.stdout or completed.stderr).strip().splitlines()
             version = first_line[0] if first_line else ""

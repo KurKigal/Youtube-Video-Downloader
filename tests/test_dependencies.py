@@ -22,3 +22,15 @@ def test_find_executable_prefers_candidate_bin(monkeypatch):
         binary.write_bytes(b"placeholder")
         monkeypatch.setattr(DependencyService, "candidate_bin_dirs", classmethod(lambda cls: [root]))
         assert DependencyService.find_executable("deno") == str(binary)
+
+
+def test_ffmpeg_and_ffprobe_use_single_dash_version_flag():
+    assert DependencyService.version_args("ffmpeg") == ("-version",)
+    assert DependencyService.version_args("ffmpeg.exe") == ("-version",)
+    assert DependencyService.version_args("ffprobe") == ("-version",)
+    assert DependencyService.version_args("ffprobe.exe") == ("-version",)
+
+
+def test_deno_uses_double_dash_version_flag():
+    assert DependencyService.version_args("deno") == ("--version",)
+    assert DependencyService.version_args("deno.exe") == ("--version",)

@@ -1,5 +1,12 @@
 # YouTube Downloader V2.0.0
 
+
+## V2.0.1 Patch
+
+- Windows'ta geçerli FFmpeg/FFprobe kurulumlarının yanlışlıkla eksik görünmesine neden olan sürüm kontrolü düzeltildi.
+- FFmpeg/FFprobe artık doğru `-version`, Deno ise `--version` argümanıyla doğrulanır.
+- Otomatik kurulum sonrasındaki doğrulama da aynı düzeltmeyi kullanır.
+
 PySide6 arayüzlü, `yt-dlp` tabanlı Windows/Linux video ve ses indirici.
 
 V2; eski CustomTkinter sürümünün yeniden yazılmış, modüler ve daha sağlam sürümüdür. Eski kaynaklar `legacy/` altında korunur.

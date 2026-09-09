@@ -109,8 +109,8 @@ class DependencyRepairService:
             self._atomic_copy(ffmpeg, target / "ffmpeg.exe")
             self._atomic_copy(ffprobe, target / "ffprobe.exe")
 
-        self._verify_executable(target / "ffmpeg.exe")
-        self._verify_executable(target / "ffprobe.exe")
+        self._verify_executable(target / "ffmpeg.exe", ("-version",))
+        self._verify_executable(target / "ffprobe.exe", ("-version",))
         self._emit(on_progress, "FFmpeg", "FFmpeg ve FFprobe hazır.", 100)
 
     def _install_deno(self, on_progress) -> None:
@@ -142,7 +142,7 @@ class DependencyRepairService:
                 raise RuntimeError("İndirilen pakette deno.exe bulunamadı")
             self._atomic_copy(deno, target / "deno.exe")
 
-        self._verify_executable(target / "deno.exe")
+        self._verify_executable(target / "deno.exe", ("--version",))
         self._emit(on_progress, "Deno", "Deno hazır.", 100)
 
     @staticmethod
@@ -216,10 +216,18 @@ class DependencyRepairService:
         os.replace(temp, destination)
 
     @staticmethod
-    def _verify_executable(path: Path) -> None:
-        completed = subprocess.run([str(path), "--version"], capture_output=True, text=True, timeout=10, check=False)
+    def _verify_executable(path: Path, version_args: tuple[str, ...]) -> None:
+        completed = subprocess.run(
+            [str(path), *version_args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
         if completed.returncode != 0:
-            raise RuntimeError(f"{path.name} çalıştırılamadı")
+            detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+            suffix = f": {detail[0]}" if detail else ""
+            raise RuntimeError(f"{path.name} çalıştırılamadı{suffix}")
 
     @staticmethod
     def _emit(callback, component: str, message: str, percent: int) -> None:

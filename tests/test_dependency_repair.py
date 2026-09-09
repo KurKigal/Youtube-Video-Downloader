@@ -32,3 +32,22 @@ def test_find_file_locates_nested_executable():
 def test_deno_architecture_x64(monkeypatch):
     monkeypatch.setattr(repair_module.platform, "machine", lambda: "AMD64")
     assert DependencyRepairService._deno_architecture() == "x86_64"
+
+
+def test_verify_executable_uses_supplied_version_flag(monkeypatch, tmp_path):
+    binary = tmp_path / "ffmpeg.exe"
+    binary.write_bytes(b"placeholder")
+    seen = {}
+
+    class Result:
+        returncode = 0
+        stdout = "ffmpeg version test"
+        stderr = ""
+
+    def fake_run(args, **kwargs):
+        seen["args"] = args
+        return Result()
+
+    monkeypatch.setattr(repair_module.subprocess, "run", fake_run)
+    DependencyRepairService._verify_executable(binary, ("-version",))
+    assert seen["args"][-1] == "-version"

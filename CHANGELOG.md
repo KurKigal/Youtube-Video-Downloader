@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1
+
+- Fixed FFmpeg/FFprobe dependency detection on Windows.
+- FFmpeg and FFprobe now use their correct `-version` flag during runtime checks and automatic repair verification.
+- Deno continues to use `--version`.
+- Prevents valid or auto-installed FFmpeg components from being incorrectly reported as missing.
+
 ## 2.0.0
 
 - PySide6 tabanlı V2 yeniden yazımı
