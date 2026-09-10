@@ -1,5 +1,11 @@
-# YouTube Downloader V2.0.0
+# YouTube Downloader V2.0.2
 
+
+## V2.0.2 Patch
+
+- Deno otomatik kurulumunda `.sha256sum` dosyasının PowerShell biçiminde gelmesi desteklendi.
+- Checksum parser artık hash değerinin dosyanın ilk kelimesi olmasını varsaymıyor.
+- SHA-256 doğrulaması kaldırılmadı; geçersiz veya belirsiz checksum içeriği yine reddedilir.
 
 ## V2.0.1 Patch
 
@@ -46,7 +52,7 @@ Kurulum akışı:
 3. Resmî/sağlayıcı kaynaktan ZIP ve SHA-256 checksum indirilir.
 4. Arşiv SHA-256 ile doğrulanır.
 5. `ffmpeg.exe`, `ffprobe.exe` ve/veya `deno.exe` kullanıcı-local klasöre kurulur.
-6. Binary `--version` ile çalıştırılarak doğrulanır.
+6. Binary, bileşene uygun sürüm argümanıyla (`-version` veya `--version`) çalıştırılarak doğrulanır.
 7. Bekleyen analiz/indirme otomatik tekrar denenebilir.
 
 FFmpeg işlemi gerçekten başarısız olursa eksik bileşen hatasından ayrı gösterilir. Hata penceresinde `Bileşenleri Onar`, `Tekrar Dene` ve teknik detay akışı bulunur.

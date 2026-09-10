@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -199,10 +200,23 @@ class DependencyRepairService:
         except requests.RequestException as exc:
             raise RuntimeError(f"Checksum alınamadı: {exc}") from exc
         text = response.text.strip()
-        token = text.split()[0] if text else ""
-        if len(token) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in token):
-            raise RuntimeError("Checksum dosyası geçersiz")
-        return token
+
+        # Checksum assets are not guaranteed to use the classic
+        # "<hash>  <filename>" layout. Deno's Windows release workflow can
+        # publish PowerShell Format-List output, for example:
+        #
+        #   Algorithm : SHA256
+        #   Hash      : ABCDEF...
+        #   Path      : ...
+        #
+        # Extract a standalone SHA-256 token instead of assuming the first
+        # whitespace-separated token is the digest. Verification remains
+        # strict: exactly one distinct 64-hex digest must be present.
+        matches = re.findall(r"(?i)(?<![0-9a-f])([0-9a-f]{64})(?![0-9a-f])", text)
+        unique = list(dict.fromkeys(match.lower() for match in matches))
+        if len(unique) != 1:
+            raise RuntimeError("Checksum dosyasında geçerli tek bir SHA-256 değeri bulunamadı")
+        return unique[0]
 
     @staticmethod
     def _find_file(root: Path, filename: str) -> Path | None:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.2
+
+- Fixed Deno automatic installation when its `.sha256sum` file uses PowerShell `Format-List` output.
+- Checksum parsing now extracts a standalone SHA-256 digest instead of assuming the first token is the hash.
+- SHA-256 verification remains mandatory; malformed or ambiguous checksum files are still rejected.
+- Added regression tests for both classic and PowerShell checksum formats.
+
 ## 2.0.1
 
 - Fixed FFmpeg/FFprobe dependency detection on Windows.

@@ -19,6 +19,33 @@ def test_checksum_parser_accepts_standard_sha256(monkeypatch):
     assert DependencyRepairService._fetch_checksum("https://example.test/checksum") == expected
 
 
+
+
+def test_checksum_parser_accepts_powershell_format_list(monkeypatch):
+    expected = "ABCDEF0123456789" * 4
+    body = (
+        "Algorithm : SHA256\n"
+        f"Hash      : {expected}\n"
+        "Path      : C:\\temp\\deno-x86_64-pc-windows-msvc.zip\n"
+    )
+    monkeypatch.setattr(repair_module.requests, "get", lambda *args, **kwargs: FakeResponse(body))
+    assert DependencyRepairService._fetch_checksum("https://example.test/checksum") == expected.lower()
+
+
+def test_checksum_parser_rejects_missing_digest(monkeypatch):
+    monkeypatch.setattr(
+        repair_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse("Algorithm : SHA256\nHash : unavailable\n"),
+    )
+    try:
+        DependencyRepairService._fetch_checksum("https://example.test/checksum")
+    except RuntimeError as exc:
+        assert "SHA-256" in str(exc)
+    else:
+        raise AssertionError("invalid checksum body should fail")
+
+
 def test_find_file_locates_nested_executable():
     with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
         root = Path(tmp)
